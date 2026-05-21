@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  image        String?
+  googleId     String   @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  watchlist    WatchlistItem[]
+  transactions Transaction[]
+}
+
+model Stock {
+  id        String   @id @default(uuid())
+  symbol    String   @unique
+  name      String
+  exchange  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  watchlistItems WatchlistItem[]
+  transactions   Transaction[]
+  priceCache     PriceCache[]
+}
+
+model WatchlistItem {
+  id        String   @id @default(uuid())
+  userId    String
+  stockId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock Stock @relation(fields: [stockId], references: [id])
+
+  @@unique([userId, stockId])
+}
+
+enum TransactionType {
+  BUY
+  SELL
+}
+
+model Transaction {
+  id            String          @id @default(uuid())
+  userId        String
+  stockId       String
+  type          TransactionType
+  quantity      Decimal         @db.Decimal(20, 8)
+  pricePerShare Decimal         @db.Decimal(20, 4)
+  executedAt    DateTime
+  fee           Decimal         @default(0) @db.Decimal(20, 4)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock Stock @relation(fields: [stockId], references: [id])
+
+  @@index([userId, executedAt])
+}
+
+model PriceCache {
+  id      String   @id @default(uuid())
+  stockId String
+  date    DateTime @db.Date
+  open    Decimal  @db.Decimal(20, 4)
+  high    Decimal  @db.Decimal(20, 4)
+  low     Decimal  @db.Decimal(20, 4)
+  close   Decimal  @db.Decimal(20, 4)
+  volume  BigInt
+
+  stock Stock @relation(fields: [stockId], references: [id])
+
+  @@unique([stockId, date])
+  @@index([stockId, date])
+}
