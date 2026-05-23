@@ -1,36 +1,44 @@
-import 'dotenv/config'
-import { serve } from '@hono/node-server'
-import { Hono } from 'hono'
-import { prisma } from '@stock-dashboard/database'
+import "dotenv/config";
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+import { prisma } from "@stock-dashboard/database";
+import { stocksRoutes } from "./routes/stocks.js";
 
-const app = new Hono()
+const app = new Hono();
 
-app.get('/', (c) => {
-  return c.text('Hello Hono!')
-})
+app.get("/", (c) => {
+  return c.text("Hello Hono!");
+});
 
-// DB接続テスト用エンドポイント
-app.get('/health/db', async (c) => {
+app.get("/health/db", async (c) => {
   try {
-    // 簡単なクエリでDB接続を確認
-    const userCount = await prisma.user.count()
+    const userCount = await prisma.user.count();
     return c.json({
-      status: 'ok',
-      database: 'connected',
+      status: "ok",
+      database: "connected",
       userCount,
-    })
+    });
   } catch (error) {
-    return c.json({
-      status: 'error',
-      database: 'disconnected',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    }, 500)
+    return c.json(
+      {
+        status: "error",
+        database: "disconnected",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      500,
+    );
   }
-})
+});
 
-serve({
-  fetch: app.fetch,
-  port: 8080
-}, (info) => {
-  console.log(`Server is running on http://localhost:${info.port}`)
-})
+// Stock routes are now mounted on their final path.
+app.route("/api/stocks", stocksRoutes);
+
+serve(
+  {
+    fetch: app.fetch,
+    port: 8080,
+  },
+  (info) => {
+    console.log(`Server is running on http://localhost:${info.port}`);
+  },
+);
