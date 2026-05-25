@@ -10,6 +10,8 @@
  *   3. Manually editing the row's name in the DB and calling again
  *      -> the edited name is preserved (update: {} doesn't clobber).
  */
+// Load .env before any other import that may read process.env.
+import 'dotenv/config'
 
 import { ensureStock } from "../src/services/stocks.js";
 import { prisma } from "@stock-dashboard/database";
