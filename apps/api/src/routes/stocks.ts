@@ -7,7 +7,8 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { getDailyBars, getQuote } from "../lib/massive.js";
+import { getDailyBars } from "../lib/massive.js";
+import { getQuoteWithCache } from "../services/stocks.js";
 import { errorResponse } from "../lib/errors.js";
 
 // ---------- Schemas ----------
@@ -62,7 +63,7 @@ stocks.get("/:symbol", async (c) => {
   const symbol = parsedSymbol.data;
 
   try {
-    const quote = await getQuote(symbol);
+    const quote = await getQuoteWithCache(symbol);
     return c.json(quote);
   } catch (err) {
     if (err instanceof Error && err.message.includes("Not enough price data")) {

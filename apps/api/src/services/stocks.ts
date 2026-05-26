@@ -48,7 +48,7 @@ export async function ensureStock(symbol: string): Promise<string> {
  * would compute the last US market day; that's left as a future
  * enhancement (Phase 2+).
  */
-const FRESHNESS_DAYS = 4;
+const FRESHNESS_DAYS = 7;
 
 /**
  * How many calendar days of history to request from Massive on a cache miss.
@@ -91,7 +91,7 @@ function isCacheFresh(latestBarDate: Date): boolean {
   const now = Date.now();
   const ageMs = now - latestBarDate.getTime();
   const ageDays = ageMs / (1000 * 60 * 60 * 24);
-
+  
   return ageDays <= FRESHNESS_DAYS;
 }
 
