@@ -9,7 +9,7 @@
  *   to be rewritten.
  */
 
-import type { DailyBar, Quote } from "../types/stock.js";
+import type { DailyBar, Quote, StockMetadata } from "../types/stock.js";
 
 // ---------- Configuration ----------
 
@@ -61,6 +61,33 @@ type MassiveAggregatesResponse = {
   count?: number;
 };
 
+/**
+ * Shape of a ticker details record returned by Massive's Reference API.
+ * We only declare the fields we actually consume; Massive returns many
+ * more (market cap, employee count, etc.) which we ignore for now.
+ */
+type MassiveTickerDetails = {
+  ticker: string;
+  name: string;
+  primary_exchange?: string;
+  description?: string;
+  homepage_url?: string;
+  branding?: {
+    logo_url?: string;
+    icon_url?: string;
+  };
+  active?: boolean;
+};
+
+/**
+ * Response wrapper for /v3/reference/tickers/{ticker}.
+ */
+type MassiveTickerDetailsResponse = {
+  request_id: string;
+  status: string;
+  results?: MassiveTickerDetails;
+};
+
 // ---------- Low-level fetcher ----------
 
 /**
@@ -107,6 +134,21 @@ function toDailyBar(bar: MassiveBar): DailyBar {
     low: bar.l,
     close: bar.c,
     volume: bar.v,
+  };
+}
+
+/**
+ * Convert a raw Massive ticker details payload into our clean StockMetadata.
+ */
+function toStockMetadata(raw: MassiveTickerDetails): StockMetadata {
+  return {
+    symbol: raw.ticker,
+    name: raw.name,
+    exchange: raw.primary_exchange,
+    description: raw.description,
+    logoUrl: raw.branding?.logo_url,
+    iconUrl: raw.branding?.icon_url,
+    homepageUrl: raw.homepage_url,
   };
 }
 
@@ -172,4 +214,21 @@ export async function getQuote(symbol: string): Promise<Quote> {
     changePercent,
     latestTradingDay: latest.date,
   };
+}
+
+/**
+ * Fetch reference metadata (name, logo, description, etc.) for a symbol.
+ *
+ * Called rarely, since this data is essentially static. Typical usage is:
+ * once at seed time, and again only when we encounter a brand-new symbol.
+ */
+export async function getStockMetadata(symbol: string): Promise<StockMetadata> {
+  const path = `/v3/reference/tickers/${encodeURIComponent(symbol.toUpperCase())}`;
+  const data = await fetchFromMassive<MassiveTickerDetailsResponse>(path);
+
+  if (!data.results) {
+    throw new Error(`No metadata found for symbol "${symbol}".`);
+  }
+
+  return toStockMetadata(data.results);
 }

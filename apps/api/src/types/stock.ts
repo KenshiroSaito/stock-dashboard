@@ -30,3 +30,17 @@ export type Quote = {
   changePercent: number; // Percentage change as a raw number, no "%" sign (e.g. 0.9065)
   latestTradingDay: string; // Latest trading day, ISO 8601 (e.g. "2026-05-21")
 };
+
+/**
+ * Reference / static metadata for a stock. This is data that rarely changes
+ * (name, logo, description), distinct from prices which change constantly.
+ */
+export type StockMetadata = {
+  symbol: string; // "AAPL"
+  name: string; // "Apple Inc."
+  exchange?: string; // "XNAS"
+  description?: string;
+  logoUrl?: string;
+  iconUrl?: string;
+  homepageUrl?: string;
+};
