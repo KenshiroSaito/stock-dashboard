@@ -12,7 +12,7 @@
 
 import { prisma } from "@stock-dashboard/database";
 import { getDailyBars as fetchBarsFromMassive } from "../lib/massive.js";
-import type { DailyBar, Quote } from "../types/stock.js";
+import type { DailyBar, Quote, StockMetadata } from "../types/stock.js";
 import type { PriceCache } from "@stock-dashboard/database";
 
 /**
@@ -35,6 +35,36 @@ export async function ensureStock(symbol: string): Promise<string> {
       name: symbol, // Placeholder; replaced later by the stock-detail flow.
     },
     update: {}, // Intentionally empty: don't clobber data set elsewhere.
+  });
+  return stock.id;
+}
+
+/**
+ * Upsert a Stock row with full metadata.
+ *
+ * Differs from `ensureStock` in that this DOES overwrite existing fields.
+ * Used by the seed script and any future "stock detail" flow that fetches
+ * authoritative metadata from the upstream provider.
+ *
+ * Returns the upserted stock's id.
+ */
+export async function upsertStockWithMetadata(
+  metadata: StockMetadata,
+): Promise<string> {
+  const data = {
+    symbol: metadata.symbol,
+    name: metadata.name,
+    exchange: metadata.exchange ?? null,
+    description: metadata.description ?? null,
+    logoUrl: metadata.logoUrl ?? null,
+    iconUrl: metadata.iconUrl ?? null,
+    homepageUrl: metadata.homepageUrl ?? null,
+  };
+
+  const stock = await prisma.stock.upsert({
+    where: { symbol: metadata.symbol },
+    create: data,
+    update: data,
   });
   return stock.id;
 }
@@ -91,7 +121,7 @@ function isCacheFresh(latestBarDate: Date): boolean {
   const now = Date.now();
   const ageMs = now - latestBarDate.getTime();
   const ageDays = ageMs / (1000 * 60 * 60 * 24);
-  
+
   return ageDays <= FRESHNESS_DAYS;
 }
 
