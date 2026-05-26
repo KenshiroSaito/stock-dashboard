@@ -21,12 +21,16 @@ model User {
 }
 
 model Stock {
-  id        String   @id @default(uuid())
-  symbol    String   @unique
-  name      String
-  exchange  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(uuid())
+  symbol       String   @unique
+  name         String
+  exchange     String?
+  logoUrl      String?
+  iconUrl      String?
+  description  String?
+  homepageUrl  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   watchlistItems WatchlistItem[]
   transactions   Transaction[]
