@@ -44,3 +44,19 @@ export type StockMetadata = {
   iconUrl?: string;
   homepageUrl?: string;
 };
+
+/**
+ * One item in the "popular stocks" response: metadata + quote combined.
+ * Returned by GET /api/stocks/popular.
+ */
+export type PopularStockItem = {
+  symbol: string;
+  name: string;
+  exchange?: string;
+  logoUrl?: string;
+  price: number;
+  previousClose: number;
+  change: number;
+  changePercent: number;
+  latestTradingDay: string;
+};

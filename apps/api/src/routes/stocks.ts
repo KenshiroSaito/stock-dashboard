@@ -8,7 +8,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDailyBars } from "../lib/massive.js";
-import { getQuoteWithCache } from "../services/stocks.js";
+import { getQuoteWithCache, getPopularStocks } from "../services/stocks.js";
 import { errorResponse } from "../lib/errors.js";
 
 // ---------- Schemas ----------
@@ -46,6 +46,26 @@ function formatZodError(error: z.ZodError): string {
 // ---------- Routes ----------
 
 const stocks = new Hono();
+
+/**
+ * GET /api/stocks/popular
+ * Returns the curated popular stocks with quotes, from cache only.
+ * Symbols that aren't cached are silently omitted.
+ */
+stocks.get("/popular", async (c) => {
+  try {
+    const items = await getPopularStocks();
+    return c.json({ items });
+  } catch (err) {
+    console.error("Fauled to fetch popular stocks: ", err);
+    return errorResponse(
+      c,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to fetch popular stocks. ",
+    );
+  }
+});
 
 /**
  * GET /api/stocks/:symbol

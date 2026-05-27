@@ -14,6 +14,8 @@ import { prisma } from "@stock-dashboard/database";
 import { getDailyBars as fetchBarsFromMassive } from "../lib/massive.js";
 import type { DailyBar, Quote, StockMetadata } from "../types/stock.js";
 import type { PriceCache } from "@stock-dashboard/database";
+import { POPULAR_STOCK_SYMBOLS } from "../data/popular-stocks.js";
+import type { PopularStockItem } from "../types/stock.js";
 
 /**
  * Ensure a Stock row exists for the given symbol, and return its id.
@@ -239,4 +241,96 @@ export async function getQuoteWithCache(symbol: string): Promise<Quote> {
   // can rely on follow-up reads seeing the fresh data.
   await saveBars(stockId, bars);
   return computeQuote(normalized, bars);
+}
+
+/**
+ * Get a Quote purely from the cache. Does NOT call Massive.
+ *
+ * Returns null when the cache is missing or stale, signaling to the caller
+ * that this symbol can't be served right now without an upstream call.
+ *
+ * Used by endpoints that prefer "fast and possibly incomplete" over
+ * "complete but possibly slow / rate-limited" — for example, the popular
+ * stocks list.
+ */
+export async function getQuoteFromCache(symbol: string): Promise<Quote | null> {
+  const normalized = symbol.toUpperCase();
+
+  const stock = await prisma.stock.findUnique({
+    where: { symbol: normalized },
+    select: { id: true },
+  });
+  if (!stock) {
+    return null;
+  }
+
+  const cachedRows = await prisma.priceCache.findMany({
+    where: { stockId: stock.id },
+    orderBy: { date: "desc" },
+    take: 2,
+  });
+
+  if (cachedRows.length < 2 || !isCacheFresh(cachedRows[0].date)) {
+    return null;
+  }
+
+  const bars = cachedRows.map(rowToDailyBar).reverse();
+  return computeQuote(normalized, bars);
+}
+
+/**
+ * Build the popular stocks list using ONLY cached data.
+ *
+ * Symbols whose metadata or quote isn't currently cached are silently
+ * skipped. The caller (and the front-end) should treat the result as
+ * "best effort" — the list may be shorter than POPULAR_STOCK_SYMBOLS.
+ *
+ * Run the seed-popular-stocks script to populate or refresh the cache.
+ */
+export async function getPopularStocks(): Promise<PopularStockItem[]> {
+  // Fetch all stock metadata in a single query.
+  const stocks = await prisma.stock.findMany({
+    where: { symbol: { in: [...POPULAR_STOCK_SYMBOLS] } },
+    select: {
+      symbol: true,
+      name: true,
+      exchange: true,
+      logoUrl: true,
+    },
+  });
+
+  // Quotes are fetched per-symbol because each requires its own price
+  // cache lookup. We run them in parallel since this is pure DB reads.
+  const quotesBySymbol = new Map<string, Quote>();
+  await Promise.all(
+    stocks.map(async (stock) => {
+      const quote = await getQuoteFromCache(stock.symbol);
+      if (quote) {
+        quotesBySymbol.set(stock.symbol, quote);
+      }
+    }),
+  );
+
+  // Build the result in the order defined by POPULAR_STOCK_SYMBOLS,
+  // skipping symbols without a quote.
+  const items: PopularStockItem[] = [];
+  for (const symbol of POPULAR_STOCK_SYMBOLS) {
+    const stock = stocks.find((s) => s.symbol === symbol);
+    const quote = quotesBySymbol.get(symbol);
+    if (!stock || !quote) continue;
+
+    items.push({
+      symbol: stock.symbol,
+      name: stock.name,
+      exchange: stock.exchange ?? undefined,
+      logoUrl: stock.logoUrl ?? undefined,
+      price: quote.price,
+      previousClose: quote.previousClose,
+      change: quote.change,
+      changePercent: quote.changePercent,
+      latestTradingDay: quote.latestTradingDay,
+    });
+  }
+
+  return items;
 }
