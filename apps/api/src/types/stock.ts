@@ -60,3 +60,10 @@ export type PopularStockItem = {
   changePercent: number;
   latestTradingDay: string;
 };
+
+/**
+ * Allowed values for the history range query parameter.
+ * Keep this as the single source of truth for both backend validation
+ * and any future shared types with the front-end.
+ */
+export type HistoryRange = "7d" | "30d" | "1y";

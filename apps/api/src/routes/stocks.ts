@@ -7,8 +7,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { getDailyBars } from "../lib/massive.js";
-import { getQuoteWithCache, getPopularStocks } from "../services/stocks.js";
+import { getQuoteWithCache, getPopularStocks, getHistoryWithCache } from "../services/stocks.js";
 import { errorResponse } from "../lib/errors.js";
 
 // ---------- Schemas ----------
@@ -25,8 +24,6 @@ const SymbolSchema = z
 
 /**
  * Allowed values for the ?range= query parameter.
- * Using z.enum gives us both runtime validation AND a precise literal type
- * (`"7d" | "30d" | "1y"`) — Zod is the single source of truth for both.
  */
 const RangeSchema = z.enum(["7d", "30d", "1y"]);
 
@@ -130,16 +127,8 @@ stocks.get("/:symbol/history", async (c) => {
   }
   const range = parsedRange.data;
 
-  // Convert the range to a date window.
-  const daysByRange = { "7d": 7, "30d": 30, "1y": 365 };
-  const days = daysByRange[range];
-
-  const today = new Date();
-  const start = new Date(today.getTime() - days * 24 * 60 * 60 * 1000);
-  const toIso = (d: Date) => d.toISOString().slice(0, 10);
-
   try {
-    const bars = await getDailyBars(symbol, toIso(start), toIso(today));
+    const bars = await getHistoryWithCache(symbol, range);
 
     if (bars.length === 0) {
       return errorResponse(
@@ -152,7 +141,7 @@ stocks.get("/:symbol/history", async (c) => {
 
     return c.json({ symbol, range, bars });
   } catch (err) {
-    console.error("Failed to fetch history:", err);
+    console.error("Failed to fetch history: ", err);
     return errorResponse(
       c,
       502,

@@ -12,7 +12,7 @@
 
 import { prisma } from "@stock-dashboard/database";
 import { getDailyBars as fetchBarsFromMassive } from "../lib/massive.js";
-import type { DailyBar, Quote, StockMetadata } from "../types/stock.js";
+import type { DailyBar, HistoryRange, Quote, StockMetadata } from "../types/stock.js";
 import type { PriceCache } from "@stock-dashboard/database";
 import { POPULAR_STOCK_SYMBOLS } from "../data/popular-stocks.js";
 import type { PopularStockItem } from "../types/stock.js";
@@ -276,6 +276,75 @@ export async function getQuoteFromCache(symbol: string): Promise<Quote | null> {
 
   const bars = cachedRows.map(rowToDailyBar).reverse();
   return computeQuote(normalized, bars);
+}
+
+// ---------- History ----------
+
+/**
+ * Convert a range alias ("7d" | "30d" | "1y") into a date window.
+ */
+function rangeToWindow(range: HistoryRange): { from: Date; to: Date } {
+  const daysByRange = { "7d": 7, "30d": 30, "1y": 365 };
+  const days = daysByRange[range];
+  const to = new Date();
+  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+  return { from, to };
+}
+
+/**
+ * Get daily price history for a symbol over a range, using cache when fresh.
+ *
+ * Strategy mirrors getQuoteWithCache, but for a window rather than 2 bars:
+ *   1. ensureStock for the symbol
+ *   2. Read PriceCache rows inside [from, to]
+ *   3. If we have at least one row AND the latest one is fresh -> CACHE HIT
+ *   4. Otherwise -> CACHE MISS: fetch the window from Massive, persist, return
+ *
+ * Note: this does NOT try to patch partial gaps in the cache. If anything is
+ * stale or the cache has 0 rows, we refetch the whole window. A smarter
+ * "fetch only the missing days" implementation is deferred until we see
+ * the simpler version cause real problems.
+ */
+export async function getHistoryWithCache(
+  symbol: string,
+  range: HistoryRange,
+): Promise<DailyBar[]> {
+  const normalized = symbol.toUpperCase();
+  const stockId = await ensureStock(normalized);
+  const { from, to } = rangeToWindow(range);
+
+  // Read whatever we have in the requested window.
+  const cachedRows = await prisma.priceCache.findMany({
+    where: {
+      stockId,
+      date: { gte: from, lte: to },
+    },
+    orderBy: { date: "asc" },
+  });
+
+  if (cachedRows.length > 0) {
+    const latestCachedDate = cachedRows[cachedRows.length - 1].date;
+    if (isCacheFresh(latestCachedDate)) {
+      console.log(
+        `[stocks] CACHE HIT for ${normalized} history (${range}, ${cachedRows.length} bars)`,
+      );
+      return cachedRows.map(rowToDailyBar);
+    }
+  }
+
+  console.log(
+    `[stocks] CACHE MISS for ${normalized} history (${range}), fetching from Massive...`,
+  );
+
+  // Fetch the window from Massive and persist.
+  const toIso = (d: Date) => d.toISOString().slice(0, 10);
+  const bars = await fetchBarsFromMassive(normalized, toIso(from), toIso(to));
+
+  if (bars.length > 0) {
+    await saveBars(stockId, bars);
+  }
+
+  return bars;
 }
 
 /**
