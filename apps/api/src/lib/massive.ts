@@ -232,3 +232,30 @@ export async function getStockMetadata(symbol: string): Promise<StockMetadata> {
 
   return toStockMetadata(data.results);
 }
+
+/**
+ * Fetch a binary asset (logo image) from Massive.
+ *
+ * Differs from fetchFromMassive in that:
+ *   - Response is binary (Buffer), not JSON
+ *   - Auth still goes via the Authorization header
+ *
+ * Used by the seed script to download stock logos for static serving.
+ */
+export async function fetchLogo(logoUrl: string): Promise<Buffer> {
+  const response = await fetch(logoUrl, {
+    headers: {
+      Authorization: `Bearer ${getApiKey()}`,
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(
+      `Failed to fetch logo: ${response.status} ${response.statusText} - ${text}`,
+    );
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}

@@ -1,36 +1,80 @@
 // Load .env before any other import that may read process.env.
 import "dotenv/config";
 
+import { writeFile, mkdir } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { POPULAR_STOCK_SYMBOLS } from "../src/data/popular-stocks.js";
-import { getStockMetadata } from "../src/lib/massive.js";
+import { getStockMetadata, fetchLogo } from "../src/lib/massive.js";
 import {
   upsertStockWithMetadata,
   getQuoteWithCache,
 } from "../src/services/stocks.js";
 import { prisma } from "@stock-dashboard/database";
+import type { StockMetadata } from "../src/types/stock.js";
 
 /**
  * Seed the database with our curated popular stocks.
  *
  * For each symbol:
- *   1. Fetch authoritative metadata from Massive (name, logo, etc.)
- *   2. Upsert into the Stock table (overwriting placeholders)
- *   3. Fetch and persist daily price bars via getQuoteWithCache
+ *   1. Fetch authoritative metadata from Massive
+ *   2. Download the logo SVG (if present) and save it to apps/web/public/logos/
+ *   3. Overwrite metadata.logoUrl with the local path before persisting
+ *   4. Upsert into Stock
+ *   5. Refresh price bars via getQuoteWithCache
  *
- * Throttling: Massive's free tier allows 5 requests/minute. Each symbol
- * costs at most 2 requests (metadata + bars), so we wait ~13 seconds
- * between requests to stay safely under the limit.
+ * Logos are saved as static assets because Massive's branding endpoint
+ * requires authentication; the browser can't fetch them directly.
  *
- * Idempotent: re-running this script is safe. Metadata is overwritten
- * (so manual fixes will be lost, by design), and price bars are upserted.
+ * Throttling: Each symbol costs up to 3 Massive requests (metadata, logo,
+ * bars). With a 13s gap between calls, the full 10-symbol run takes ~7 min.
+ * Re-runs are dramatically faster because cached prices skip the bars call.
  */
 
-// Number of milliseconds to wait between Massive API calls.
-// 60_000ms / 5 req = 12_000ms minimum; 13_000ms gives us a safety margin.
 const THROTTLE_MS = 13_000;
+
+/**
+ * Where the Next.js app serves static files from.
+ * Resolved relative to this script's location to stay stable when run from
+ * different working directories.
+ */
+const LOGOS_DIR = resolve(
+  import.meta.dirname,
+  "..",
+  "..",
+  "web",
+  "public",
+  "logos",
+);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Download a logo and save it under apps/web/public/logos/{symbol}{ext}.
+ * Returns the public-facing path (e.g. "/logos/AAPL.svg") to store in DB,
+ * or null if there's no logo to download.
+ */
+async function downloadAndSaveLogo(
+  symbol: string,
+  metadata: StockMetadata,
+): Promise<string | null> {
+  if (!metadata.logoUrl) {
+    return null;
+  }
+
+  // Derive extension from the URL; default to .svg since most are SVG.
+  const urlExtMatch = metadata.logoUrl.match(/\.(svg|png|jpe?g)(?:\?|$)/i);
+  const ext = urlExtMatch ? `.${urlExtMatch[1].toLowerCase()}` : ".svg";
+
+  const filename = `${symbol}${ext}`;
+  const filepath = join(LOGOS_DIR, filename);
+  const publicPath = `/logos/${filename}`;
+
+  const data = await fetchLogo(metadata.logoUrl);
+  await writeFile(filepath, data);
+
+  return publicPath;
 }
 
 async function seedOne(
@@ -44,13 +88,28 @@ async function seedOne(
   console.log(`  Fetching metadata...`);
   const metadata = await getStockMetadata(symbol);
   console.log(`    -> ${metadata.name}`);
-  await upsertStockWithMetadata(metadata);
-  console.log(`    -> upserted into Stock`);
 
-  // Throttle before the next Massive call.
+  // Step 2: logo (if any). This counts as another Massive call, so wait first.
   await sleep(THROTTLE_MS);
 
-  // Step 2: prices. getQuoteWithCache will hit Massive only if cache is stale.
+  console.log(`  Downloading logo...`);
+  const localLogoPath = await downloadAndSaveLogo(symbol, metadata);
+  if (localLogoPath) {
+    console.log(`    -> saved to ${localLogoPath}`);
+  } else {
+    console.log(`    -> no logo URL, skipping`);
+  }
+
+  // Step 3: upsert with the LOCAL logo path, not the upstream URL.
+  await upsertStockWithMetadata({
+    ...metadata,
+    logoUrl: localLogoPath ?? undefined,
+  });
+  console.log(`    -> upserted into Stock`);
+
+  // Step 4: prices. getQuoteWithCache hits Massive only on cache miss.
+  await sleep(THROTTLE_MS);
+
   console.log(`  Fetching/refreshing prices...`);
   const quote = await getQuoteWithCache(symbol);
   console.log(
@@ -59,10 +118,16 @@ async function seedOne(
 }
 
 async function main() {
+  // Ensure the destination directory exists before any write.
+  await mkdir(LOGOS_DIR, { recursive: true });
+  console.log(`Logos will be written to: ${LOGOS_DIR}`);
+
   const symbols = POPULAR_STOCK_SYMBOLS;
+  const estimatedMinutes = Math.ceil(
+    (symbols.length * 3 * THROTTLE_MS) / 1000 / 60,
+  );
   console.log(
-    `Seeding ${symbols.length} popular stocks. ` +
-      `Expected duration: ~${Math.ceil((symbols.length * 2 * THROTTLE_MS) / 1000 / 60)} minutes.`,
+    `Seeding ${symbols.length} popular stocks. Expected duration: ~${estimatedMinutes} minutes.`,
   );
 
   const failures: { symbol: string; error: unknown }[] = [];
@@ -76,7 +141,6 @@ async function main() {
       failures.push({ symbol, error: err });
     }
 
-    // Throttle before moving to the next symbol (unless we're at the end).
     if (i < symbols.length - 1) {
       await sleep(THROTTLE_MS);
     }
