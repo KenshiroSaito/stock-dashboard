@@ -27,6 +27,9 @@ export function StockTable({ items }: { items: PopularStockItem[] }) {
               Symbol
             </th>
             <th className="px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              As of
+            </th>
+            <th className="px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
               Name
             </th>
             <th className="px-4 py-3 text-right text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -104,6 +107,9 @@ function StockRow({ item }: { item: PopularStockItem }) {
             {item.symbol}
           </span>
         </div>
+      </td>
+      <td className="px-4 py-3 text-sm text-zinc-500 dark:text-zinc-400">
+        {item.latestTradingDay}
       </td>
       <td className="px-4 py-3 text-sm text-zinc-700 dark:text-zinc-300">
         {item.name}

@@ -12,7 +12,12 @@
 
 import { prisma } from "@stock-dashboard/database";
 import { getDailyBars as fetchBarsFromMassive } from "../lib/massive.js";
-import type { DailyBar, HistoryRange, Quote, StockMetadata } from "../types/stock.js";
+import type {
+  DailyBar,
+  HistoryRange,
+  Quote,
+  StockMetadata,
+} from "../types/stock.js";
 import type { PriceCache } from "@stock-dashboard/database";
 import { POPULAR_STOCK_SYMBOLS } from "../data/popular-stocks.js";
 import type { PopularStockItem } from "../types/stock.js";
@@ -246,10 +251,12 @@ export async function getQuoteWithCache(symbol: string): Promise<Quote> {
 /**
  * Get a Quote purely from the cache. Does NOT call Massive.
  *
- * Returns null when the cache is missing or stale, signaling to the caller
- * that this symbol can't be served right now without an upstream call.
+ * Returns null only when the cache can't produce a quote at all — i.e. fewer
+ * than 2 bars exist (we need 2 to compute a change percent). Staleness is NOT
+ * checked: an old-but-valid quote is returned as-is. Callers that care about
+ * freshness should surface `latestTradingDay` to the user.
  *
- * Used by endpoints that prefer "fast and possibly incomplete" over
+ * Used by endpoints that prefer "fast and possibly incomplete/stale" over
  * "complete but possibly slow / rate-limited" — for example, the popular
  * stocks list.
  */
@@ -270,7 +277,7 @@ export async function getQuoteFromCache(symbol: string): Promise<Quote | null> {
     take: 2,
   });
 
-  if (cachedRows.length < 2 || !isCacheFresh(cachedRows[0].date)) {
+  if (cachedRows.length < 2) {
     return null;
   }
 
