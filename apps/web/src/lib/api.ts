@@ -6,7 +6,7 @@
  * base URL can be switched (dev vs production) in one place.
  */
 
-import { PopularStockItem } from "../types/stock";
+import { PopularStockItem, Quote, StockProfile } from "../types/stock";
 
 /**
  * Read the API base URL from the environment. We throw at call time rather
@@ -43,4 +43,40 @@ export async function fetchPopularStocks(): Promise<PopularStockItem[]> {
 
   const data = (await res.json()) as { items: PopularStockItem[] };
   return data.items;
+}
+
+/**
+ * GET /api/stocks/:symbol
+ */
+export async function fetchQuote(symbol: string): Promise<Quote> {
+  const res = await fetch(
+    `${getApiBaseUrl()}/api/stocks/${encodeURIComponent(symbol)}`,
+    { cache: "no-store" },
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      `Failed to fetch quote for ${symbol}: ${res.status} ${res.statusText}`,
+    );
+  }
+
+  return (await res.json()) as Quote;
+}
+
+/**
+ * GET /api/stocks/:symbol/profile
+ */
+export async function fetchProfile(symbol: string): Promise<StockProfile> {
+  const res = await fetch(
+    `${getApiBaseUrl()}/api/stocks/${encodeURIComponent(symbol)}/profile`,
+    { cache: "no-store" },
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      `Failed to fetch profile for ${symbol}: ${res.status} ${res.statusText}`,
+    );
+  }
+
+  return (await res.json()) as StockProfile;
 }

@@ -7,7 +7,12 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { getQuoteWithCache, getPopularStocks, getHistoryWithCache } from "../services/stocks.js";
+import {
+  getQuoteWithCache,
+  getPopularStocks,
+  getHistoryWithCache,
+  getMetadataWithCache,
+} from "../services/stocks.js";
 import { errorResponse } from "../lib/errors.js";
 
 // ---------- Schemas ----------
@@ -147,6 +152,44 @@ stocks.get("/:symbol/history", async (c) => {
       502,
       "UPSTREAM_ERROR",
       "Failed to fetch history from upstream provider.",
+    );
+  }
+});
+
+/**
+ * GET /api/stocks/:symbol/profile
+ * Company metadata (name, description, logo). DB-cached; falls back to Massive.
+ */
+stocks.get("/:symbol/profile", async (c) => {
+  const parsedSymbol = SymbolSchema.safeParse(c.req.param("symbol"));
+  if (!parsedSymbol.success) {
+    return errorResponse(
+      c,
+      400,
+      "INVALID_PARAMETER",
+      formatZodError(parsedSymbol.error),
+    );
+  }
+  const symbol = parsedSymbol.data;
+
+  try {
+    const profile = await getMetadataWithCache(symbol);
+    return c.json(profile);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("No metadata found")) {
+      return errorResponse(
+        c,
+        404,
+        "STOCK_NOT_FOUND",
+        `No profile data available for "${symbol}".`,
+      );
+    }
+    console.error("Failed to fetch profile:", err);
+    return errorResponse(
+      c,
+      502,
+      "UPSTREAM_ERROR",
+      "Failed to fetch profile from upstream provider.",
     );
   }
 });

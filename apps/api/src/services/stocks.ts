@@ -11,7 +11,10 @@
  */
 
 import { prisma } from "@stock-dashboard/database";
-import { getDailyBars as fetchBarsFromMassive } from "../lib/massive.js";
+import {
+  getDailyBars as fetchBarsFromMassive,
+  getStockMetadata as fetchMetadataFromMassive,
+} from "../lib/massive.js";
 import type {
   DailyBar,
   HistoryRange,
@@ -74,6 +77,41 @@ export async function upsertStockWithMetadata(
     update: data,
   });
   return stock.id;
+}
+
+/**
+ * Get stock metadata, preferring the DB and falling back to Massive.
+ *
+ * Cache hit: the Stock row exists AND has a description (our proxy for
+ * "full metadata has been fetched"). Cache miss: fetch from Massive,
+ * persist via upsertStockWithMetadata, and return the fresh data.
+ *
+ * Metadata changes rarely, so unlike quotes we don't expire it by age.
+ */
+export async function getMetadataWithCache(
+  symbol: string,
+): Promise<StockMetadata> {
+  const normalized = symbol.toUpperCase();
+
+  const cached = await prisma.stock.findUnique({
+    where: { symbol: normalized },
+  });
+
+  if (cached && cached.description) {
+    return {
+      symbol: cached.symbol,
+      name: cached.name,
+      exchange: cached.exchange ?? undefined,
+      description: cached.description ?? undefined,
+      logoUrl: cached.logoUrl ?? undefined,
+      iconUrl: cached.iconUrl ?? undefined,
+      homepageUrl: cached.homepageUrl ?? undefined,
+    };
+  }
+
+  const metadata = await fetchMetadataFromMassive(normalized);
+  await upsertStockWithMetadata(metadata);
+  return metadata;
 }
 
 /**

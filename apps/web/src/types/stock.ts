@@ -24,3 +24,28 @@ export type PopularStockItem = {
   changePercent: number;
   latestTradingDay: string;
 };
+
+/**
+ * A price quote, as returned by GET /api/stocks/:symbol.
+ */
+export type Quote = {
+  symbol: string;
+  price: number;
+  previousClose: number;
+  change: number;
+  changePercent: number;
+  latestTradingDay: string;
+};
+
+/**
+ * Company metadata, as returned by GET /api/stocks/:symbol/profile.
+ */
+export type StockProfile = {
+  symbol: string;
+  name: string;
+  exchange?: string;
+  description?: string;
+  logoUrl?: string;
+  iconUrl?: string;
+  homepageUrl?: string;
+};
