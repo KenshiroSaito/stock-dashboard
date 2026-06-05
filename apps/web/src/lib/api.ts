@@ -6,7 +6,13 @@
  * base URL can be switched (dev vs production) in one place.
  */
 
-import { PopularStockItem, Quote, StockProfile } from "../types/stock";
+import {
+  PopularStockItem,
+  Quote,
+  StockProfile,
+  DailyBar,
+  HistoryRange,
+} from "../types/stock";
 
 /**
  * Read the API base URL from the environment. We throw at call time rather
@@ -79,4 +85,26 @@ export async function fetchProfile(symbol: string): Promise<StockProfile> {
   }
 
   return (await res.json()) as StockProfile;
+}
+
+/**
+ * GET /api/stocks/:symbol/history?range=...
+ */
+export async function fetchHistory(
+  symbol: string,
+  range: HistoryRange,
+): Promise<DailyBar[]> {
+  const res = await fetch(
+    `${getApiBaseUrl()}/api/stocks/${encodeURIComponent(symbol)}/history?range=${range}`,
+    { cache: "no-store" },
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      `Failed to fetch history for ${symbol}: ${res.status} ${res.statusText}`,
+    );
+  }
+
+  const data = (await res.json()) as { bars: DailyBar[] };
+  return data.bars;
 }

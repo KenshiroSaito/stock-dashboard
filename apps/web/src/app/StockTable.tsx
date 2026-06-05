@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { PopularStockItem } from "../types/stock";
 
 /**
@@ -103,9 +104,12 @@ function StockRow({ item }: { item: PopularStockItem }) {
               {item.symbol.slice(0, 2)}
             </div>
           )}
-          <span className="font-mono font-medium text-zinc-900 dark:text-zinc-50">
+          <Link
+            href={`/stocks/${item.symbol}`}
+            className="font-mono font-medium text-zinc-900 hover:text-blue-500 dark:text-zinc-50 dark:hover:text-blue-400"
+          >
             {item.symbol}
-          </span>
+          </Link>
         </div>
       </td>
       <td className="px-4 py-3 text-sm text-zinc-500 dark:text-zinc-400">

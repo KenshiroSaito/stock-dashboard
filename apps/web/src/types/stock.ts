@@ -49,3 +49,17 @@ export type StockProfile = {
   iconUrl?: string;
   homepageUrl?: string;
 };
+
+/**
+ * One daily price bar, as returned by GET /api/stocks/:symbol/history.
+ */
+export type DailyBar = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export type HistoryRange = "7d" | "30d" | "1y";
