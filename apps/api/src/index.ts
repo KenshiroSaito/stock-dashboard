@@ -1,10 +1,18 @@
 import "dotenv/config";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { prisma } from "@stock-dashboard/database";
 import { stocksRoutes } from "./routes/stocks.js";
 
 const app = new Hono();
+
+app.use(
+  "/api/*",
+  cors({
+    origin: "http://localhost:3000",
+  }),
+);
 
 app.get("/", (c) => {
   return c.text("Hello Hono!");
